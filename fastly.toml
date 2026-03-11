@@ -17,6 +17,8 @@ service_id = ""
   [local_server.backends]
     [local_server.backends.dm]
       url = "https://dm.cpilsworth.workers.dev"
+    [local_server.backends.auth]
+      url = "https://auth.cpilsworth.workers.dev"
 
   [local_server.config_stores]
     [local_server.config_stores.config_default]
