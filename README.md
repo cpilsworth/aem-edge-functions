@@ -1,256 +1,226 @@
-# aem-edge-functions-boilerplate
+# AEM Edge Functions DM Proxy Demo
 
-## Introduction
+This repository is a working AEM Edge Functions sample that proxies Dynamic Media requests through Fastly-based edge code and exposes a browser test harness for inspecting the results.
 
-This boilerplate serves as an example of what is possible to achieve with AEM Edge Functions. The repository contains a simple server that expose multiple endpoints and makes usage of:
+It is not a generic boilerplate anymore. The project is focused on one specific use case:
 
-- Edge Functions service provisioning
-- Configurations usage (ConfigStore)
-- Secrets usage (SecretStore)
-- Logging
-- Log Tailing
+- accept requests under `/adobe/assets/...`
+- perform a simple authorization check using cookies
+- proxy authorized requests to an upstream Dynamic Media backend
+- provide a `/test` page for interactive validation of assets, headers, and cookie-driven authorization behavior
 
-Functions source code can be found under `./src`, tests can be found under `./test` and are executable through `mocha`.
-The service configuration is defined in `config/compute.yaml` and CDN routing in `config/cdn.yaml`.
+## What This Project Does
 
-## Setup
+The edge function currently exposes two meaningful routes:
 
-### Adobe CLI
+- `/adobe/assets/...`
+  Proxies Dynamic Media asset requests to the configured upstream backend.
+- `/test`
+  Serves an HTML test application that lets you:
+  - switch between sample image and video assets
+  - set `allowed` and `delay` cookies
+  - inspect the response status and headers
+  - open the host URL and backend URL directly
+  - preview the selected asset in an iframe
 
-First install Adobe CLI (aio) with the following command
+The main request flow is implemented in:
 
-```
+- [src/index.js](/Users/chrisp/projects/chrisp/aem-edge-functions/src/index.js)
+- [src/dm.js](/Users/chrisp/projects/chrisp/aem-edge-functions/src/dm.js)
+- [src/dm-viewer.js](/Users/chrisp/projects/chrisp/aem-edge-functions/src/dm-viewer.js)
+
+There is also Cloudflare-side support code in:
+
+- [cloudflare/cloudflare-auth.js](/Users/chrisp/projects/chrisp/aem-edge-functions/cloudflare/cloudflare-auth.js)
+- [src/cloudflare-proxy.js](/Users/chrisp/projects/chrisp/aem-edge-functions/src/cloudflare-proxy.js)
+
+## What It Proves
+
+This repo demonstrates a few useful patterns for AEM Edge Functions:
+
+- AEM Edge Functions can front Dynamic Media style paths directly under `/adobe/assets/...`
+- edge code can perform lightweight authorization checks before proxying to the backend
+- cookies can be used to drive authorization behavior during development and demo scenarios
+- response headers can be preserved and inspected from the edge layer
+- local development with `aio aem edge-functions serve` is good enough to exercise real viewer flows, including video playback requests
+
+In practical terms, this project is a small reference implementation for:
+
+- edge-gated asset delivery
+- Dynamic Media proxying
+- troubleshooting and observability through an in-browser test page
+
+## Architecture
+
+Request flow for `/adobe/assets/...`:
+
+1. the route is matched in [src/index.js](/Users/chrisp/projects/chrisp/aem-edge-functions/src/index.js)
+2. [src/dm.js](/Users/chrisp/projects/chrisp/aem-edge-functions/src/dm.js) reads `allowed` and `delay` cookies
+3. the edge function calls the configured auth backend to decide whether the request is authorized
+4. if authorized, the request is proxied to the DM backend
+5. the upstream response is returned to the caller
+
+The `/test` page is a convenience UI for driving that flow without writing custom scripts.
+
+## Repository Layout
+
+- [src/index.js](/Users/chrisp/projects/chrisp/aem-edge-functions/src/index.js)
+  Entry point and route dispatch.
+- [src/dm.js](/Users/chrisp/projects/chrisp/aem-edge-functions/src/dm.js)
+  Authorization check plus DM proxy logic.
+- [src/dm-viewer.js](/Users/chrisp/projects/chrisp/aem-edge-functions/src/dm-viewer.js)
+  Browser test application served from `/test`.
+- [config/compute.yaml](/Users/chrisp/projects/chrisp/aem-edge-functions/config/compute.yaml)
+  Compute service definitions and allowed origins.
+- [config/cdn.yaml](/Users/chrisp/projects/chrisp/aem-edge-functions/config/cdn.yaml)
+  CDN routing configuration.
+- [fastly.toml](/Users/chrisp/projects/chrisp/aem-edge-functions/fastly.toml)
+  Local runtime configuration.
+- [cloudflare/cloudflare-auth.js](/Users/chrisp/projects/chrisp/aem-edge-functions/cloudflare/cloudflare-auth.js)
+  Mock auth service used by the demo.
+- [src/cloudflare-proxy.js](/Users/chrisp/projects/chrisp/aem-edge-functions/src/cloudflare-proxy.js)
+  Cloudflare-side proxy example.
+
+## Getting Started
+
+### 1. Install prerequisites
+
+Install Adobe CLI:
+
+```bash
 npm install -g @adobe/aio-cli
 ```
 
-Next install the aio-cli AEM Edge Functions plugin
+Install the AEM Edge Functions plugin:
 
-```
+```bash
 aio plugins:install @adobe/aio-cli-plugin-aem-edge-functions
 ```
 
-Finally run the following commands to finish setting up the aio AEM Edge Functions plugin.
+Authenticate and configure the plugin:
 
-```
+```bash
 aio login
 aio aem edge-functions setup
 ```
 
-This command will ask you to login and then to select your environment on which you want to use AEM Edge Functions.
+Install project dependencies:
 
-Note: You will need to have the **AEM Administrator Product Profile** in order to be able to deploy code to your edge functions
-
-### Boilerplate
-
-Run the following command from the boilerplate project to setup your machine
-
-```
+```bash
 npm install
 ```
 
-## Create your edge functions
+### 2. Build the project
 
-The first step to create your edge functions is to ensure that you have setup a configuration pipeline for your environment in Cloud Manager. If it is not the case, please follow this [documentation](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/operations/config-pipeline) to create your configuration pipeline.
-
-In case you are using a RDE, you can deploy your configuration using the command `aio aem:rde:install -t env-config ./config`.
-
-Edge Functions creation is done via configuration file, you will need to create a YAML file (eg. compute.yaml) with the following configuration:
-
-```
-kind: "Compute"
-version: "1"
-data:
-  services:
-    - name: first-compute
-    - name: second-compute
-  # Uncomment to enable secrets
-  # secrets:
-  #   - key: API_TOKEN
-  #     value: ${{ API_TOKEN_SECRET }}
+```bash
+npm run build
 ```
 
-The configuration is composed of:
+This compiles the edge code into the local wasm artifact used by Fastly/AEM Edge Functions.
 
-- **services**: contains a list of edge functions, where a function is composed of a **name** and a set of **origins**. The number of functions is limited to 3.
-- **configs**: contains a key/value configs arrays that will be exposed to all your edge functions
-- **secrets**: contains a key/value secrets arrays that will be exposed to all your edge functions
+### 3. Run locally
 
-Additionally, you will need to define routing rules in your CDN configuration file (eg. cdn.yaml) using CDN origin selectors rules:
-
-```
-kind: 'CDN'
-version: '1'
-data:
-  originSelectors:
-    rules:
-      - name: route-to-first-compute
-        when: { reqProperty: path, equals: "/weather" }
-        action:
-          type: selectAemOrigin
-          originName: compute-first-compute
-      - name: route-to-second-compute
-        when: { reqProperty: path, equals: "/hello-world" }
-        action:
-          type: selectAemOrigin
-          originName: compute-second-compute
-```
-
-**Note**: If you already have a CDN configuration file, just add the 2 origin selectors rules to your existing configuration
-
-The origin selector rule enables you to route your traffic to your edge functions under your own conditions (such as routing a specific domain or only under a certain path). See [official documentation](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/content-delivery/cdn-configuring-traffic#origin-selectors) to learn more about Origin Selector.
-
-Once you have created your configuration, you will need to commit your changes to your Git Repository and trigger the configuration pipeline. Once the configuration pipeline succeed, you should be able to access both your compute services:
-
-- *publish-pXXXXX-eYYYYY.adobeaemcloud.com/weather* or *example.com/weather*
-- *publish-pXXXXX-eYYYYY.adobeaemcloud.com/hello-world* or *example.com/hello-world*
-
-where **pXXXXX-eYYYYY** is your environment coordinates.
-
-## Build
-
-The following command will package your compute code for deployment to your compute service.
-
-```
-aio aem edge-functions build
-```
-
-## Deploy
-
-The following command will deploy your package to your edge function. You will have to set the argument function-name to the name you gave your function in the compute configuration file.
-
-```
-aio aem edge-functions deploy <function-name>
-```
-
-## Local run
-
-The following command will run your compute code locally and exposed a server at `http://127.0.0.1:7676`
-
-```
+```bash
 aio aem edge-functions serve
 ```
 
-You can learn more about what is supported by Local runtime on [Fastly documentation](https://www.fastly.com/documentation/reference/cli/compute/serve/).
+The local server listens on:
 
-## Test
-
-The following command will execute tests using `mocha`.
-
-```
-npm run test
+```text
+http://127.0.0.1:7676
 ```
 
-## Remote debugging
+Useful local URLs:
 
-Adobe Managed CDN only offers remote logging as a way to debug your program. The following command will tail your edge function standard output. You will be able to get runtime console.log from your edge function  directly in your terminal. You will have to set the argument function-name to the name you gave your function in the compute configuration file.
+- `http://127.0.0.1:7676/test`
+- `http://127.0.0.1:7676/adobe/assets/...`
 
+### 4. Use the test page
+
+Open:
+
+```text
+http://127.0.0.1:7676/test
 ```
-aio aem edge-functions tail-logs <function-name>
-```
+
+From there you can:
+
+- pick a sample asset
+- edit the asset path manually
+- apply `allowed` and `delay` cookies
+- load the asset through the edge function
+- inspect the HTTP status and response headers
+- compare the host URL with the upstream backend URL
+
+For authorization testing:
+
+- set `allowed=true` to allow the request
+- clear `allowed` or set another value to force an unauthorized response
+- set `delay=<milliseconds>` to simulate auth latency
 
 ## Configuration
 
-### Origins
+### Compute services
 
-Adobe Managed CDN allows compute to access any origins by default. In case you want to restrict access to only defined origins (see [Fastly Documentation](https://js-compute-reference-docs.edgecompute.app/docs/fastly:backend/enforceExplicitBackends)), you will need to define your origins in your edge functions definition (in the compute configuration file) as an array of origins similar to the [CDN Origin Selectors feature](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/content-delivery/cdn-configuring-traffic#origin-selectors).
+The compute service definition lives in [config/compute.yaml](/Users/chrisp/projects/chrisp/aem-edge-functions/config/compute.yaml).
 
-Given the following configuration
+At the time of writing, the primary service is `first-compute` and it declares the external origins needed by the edge function, including the DM and auth backends.
 
-```
-origins:
-  - name: my-origin-name
-    domain: example.com
-```
+### Local backends
 
-you will be able to select the origin to use for your request as follow
+Local runtime backends are configured in [fastly.toml](/Users/chrisp/projects/chrisp/aem-edge-functions/fastly.toml).
 
-```
-const request = new Request("https://example.com/test");
-const response = await fetch(request, { backend: "my-origin-name" });
+These are what make local proxying work when you run:
+
+```bash
+aio aem edge-functions serve
 ```
 
-### Edge Function Environment Configuration
+### CDN routing
 
-Adobe Managed CDN allows you to use environment variable in your code through config store. Those environment variables can be defined in the edge functions configuration file under configs as an array of objects containing a key and a value fields.
+Production routing is defined in [config/cdn.yaml](/Users/chrisp/projects/chrisp/aem-edge-functions/config/cdn.yaml).
 
-Given the following configuration
+You will need matching CDN origin selector rules so requests actually reach the compute service for the paths you care about.
 
-```
-configs:
-  - key: LOG_LEVEL
-    value: DEBUG
-```
+## Deploying
 
-you will be able to get your environment variable as follow
+Deploy the edge function package with:
 
-```
-import { ConfigStore } from "fastly:config-store";
-...
-const config = new ConfigStore('config_default');
-const logLevel = config.get('LOG_LEVEL') || 'info';
+```bash
+aio aem edge-functions deploy first-compute
 ```
 
-**Notes:**
-- The config store will always be named config_default
-- key name are case-sensitive
-- The config store is shared between all your edge functions
+If your compute service has a different name, replace `first-compute` with the correct service ID from [config/compute.yaml](/Users/chrisp/projects/chrisp/aem-edge-functions/config/compute.yaml).
 
-### Edge Function Secrets
+To watch logs from the deployed service:
 
-Adobe Managed CDN allows you to use secrets in your code through secret store. Those secrets can be defined in the edge functions configuration file under secrets as an array of objects containing a key and a value fields. Note that the value field **does not** contain the secret, but a reference to the secret (${{SECRET_REFERENCE}}). The secret needs to be defined in Cloud Manager as described in this [documentation](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/operations/config-pipeline#secret-env-vars).
-
-Given the following configuration
-
-```
-secrets:
-  - key: API_TOKEN
-    value: ${{ API_TOKEN_SECRET }}
+```bash
+aio aem edge-functions tail-logs first-compute
 ```
 
-you will be able to get your secret using the secret manager class available in the boilerplate. Secrets get be retrieved as follow
+## Typical Development Loop
 
-```
-import { SecretStoreManager } from "./lib/config";
-...
-const apiToken = await SecretStoreManager.getSecret('API_TOKEN');
-```
-
-**Notes:**
-- The secret store will always be named secret_default
-- key name are case-sensitive
-- **Secrets are immutable**
-- The secret store is shared between all your edge functions
-
-### Logging
-
-AEM Edge Functions is compatible with the [log forwarding feature](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/developing/log-forwarding).
-
-You can define your logging configuration as follow (create a logForwarding.yaml file next to the compute.yaml)
-
-```
-kind: "LogForwarding"
-version: "1"
-data:
-  splunk:
-    default:
-      enabled: true
-      host: "splunk-host.example.com"
-      token: "${{SPLUNK_TOKEN}}"
-      index: "AEMaaCS"
+```bash
+npm run build
+aio aem edge-functions serve
 ```
 
-and use the logger in your code as follow:
+Then:
 
-```
-import { Logger } from "fastly:logger";
-...
-const logger = new Logger("customerSplunk");
-logger.log(JSON.stringify({
-  method: event.request.method,
-  url: event.request.url
-}));
-```
+1. open `/test`
+2. apply cookies as needed
+3. load an image or video asset
+4. inspect headers and network behavior
+5. stop the local server
+6. deploy when ready
+
+## Notes
+
+- The `/test` page intentionally makes a `HEAD` request before loading the asset frame so the response status and headers can be shown.
+- Video playback generates additional segment requests after the initial player HTML, CSS, and JS assets load.
+- If the upstream auth or DM service changes behavior, local and deployed results will change accordingly.
 
 ## References
 
-https://www.fastly.com/documentation/guides/compute/
+- Fastly Compute: https://www.fastly.com/documentation/guides/compute/
+- AEM Edge Functions CLI: https://www.npmjs.com/package/@adobe/aio-cli-plugin-aem-edge-functions
