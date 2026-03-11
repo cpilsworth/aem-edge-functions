@@ -113,7 +113,7 @@ npm install
 ### 2. Build the project
 
 ```bash
-npm run build
+aio aem edge-functions build
 ```
 
 This compiles the edge code into the local wasm artifact used by Fastly/AEM Edge Functions.
@@ -166,6 +166,8 @@ The compute service definition lives in [config/compute.yaml](/Users/chrisp/proj
 
 At the time of writing, the primary service is `first-compute` and it declares the external origins needed by the edge function, including the DM and auth backends.
 
+Important: changes to [config/compute.yaml](/Users/chrisp/projects/chrisp/aem-edge-functions/config/compute.yaml) and [config/cdn.yaml](/Users/chrisp/projects/chrisp/aem-edge-functions/config/cdn.yaml) are not deployed by `aio aem edge-functions deploy`. Those configuration files must be deployed through the AEM Cloud Manager configuration pipeline.
+
 ### Local backends
 
 Local runtime backends are configured in [fastly.toml](/Users/chrisp/projects/chrisp/aem-edge-functions/fastly.toml).
@@ -192,6 +194,15 @@ aio aem edge-functions deploy first-compute
 
 If your compute service has a different name, replace `first-compute` with the correct service ID from [config/compute.yaml](/Users/chrisp/projects/chrisp/aem-edge-functions/config/compute.yaml).
 
+This command deploys edge code only.
+
+If you changed either of these files:
+
+- [config/compute.yaml](/Users/chrisp/projects/chrisp/aem-edge-functions/config/compute.yaml)
+- [config/cdn.yaml](/Users/chrisp/projects/chrisp/aem-edge-functions/config/cdn.yaml)
+
+you must commit those changes and deploy them through the AEM Cloud Manager configuration pipeline.
+
 To watch logs from the deployed service:
 
 ```bash
@@ -201,7 +212,7 @@ aio aem edge-functions tail-logs first-compute
 ## Typical Development Loop
 
 ```bash
-npm run build
+aio aem edge-functions build
 aio aem edge-functions serve
 ```
 
