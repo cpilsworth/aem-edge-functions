@@ -3,6 +3,9 @@ version: "1"
 data:
   services:
     - name: first-compute
+      origins:
+      - name: dm
+        domain: delivery-p31359-e1338271.adobeaemcloud.com
     - name: second-compute
   # Uncomment to enable secrets
   # secrets:
