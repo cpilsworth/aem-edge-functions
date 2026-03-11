@@ -5,7 +5,7 @@ data:
     - name: first-compute
       origins:
       - name: dm
-        domain: delivery-p31359-e1338271.adobeaemcloud.com
+        domain: dm.cpilsworth.workers.dev
     - name: second-compute
   # Uncomment to enable secrets
   # secrets:
