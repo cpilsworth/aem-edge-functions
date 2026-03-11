@@ -101,6 +101,19 @@ export function dmViewerHandler(req) {
       padding: 20px;
     }
 
+    .section-block + .section-block {
+      margin-top: 20px;
+      padding-top: 20px;
+      border-top: 1px solid var(--line);
+    }
+
+    .section-heading {
+      margin: 0 0 14px;
+      font-size: 1.35rem;
+      line-height: 1;
+      letter-spacing: -0.03em;
+    }
+
     .controls {
       display: grid;
       gap: 12px;
@@ -191,6 +204,12 @@ export function dmViewerHandler(req) {
       gap: 12px;
     }
 
+    .cookie-grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
     .hint {
       color: var(--muted);
       font-size: 0.92rem;
@@ -198,7 +217,8 @@ export function dmViewerHandler(req) {
 
     @media (max-width: 900px) {
       .controls,
-      .layout {
+      .layout,
+      .cookie-grid {
         grid-template-columns: 1fr;
       }
 
@@ -220,20 +240,40 @@ export function dmViewerHandler(req) {
     </section>
 
     <section class="panel">
-      <div class="controls">
-        <div>
-          <label for="asset-select">Asset</label>
-          <select id="asset-select">${buildOptions()}</select>
+      <div class="section-block">
+        <h2 class="section-heading">Asset</h2>
+        <div class="controls">
+          <div>
+            <label for="asset-select">Asset</label>
+            <select id="asset-select">${buildOptions()}</select>
+          </div>
+          <button id="load-button" type="button">Load Asset</button>
         </div>
-        <button id="load-button" type="button">Load Asset</button>
+        <div class="path-row" style="margin-top: 12px;">
+          <div>
+            <label for="asset-path">Selected Path</label>
+            <input id="asset-path" type="text" value="${escapeHtml(initialAsset)}" spellcheck="false">
+          </div>
+          <div class="hint">Host URL: <a id="host-url" href="${escapeHtml(initialHostUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(initialHostUrl)}</a></div>
+          <div class="hint">Backend URL: <a id="backend-url" href="${escapeHtml(initialBackendUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(initialBackendUrl)}</a></div>
+        </div>
       </div>
-      <div class="path-row" style="margin-top: 12px;">
-        <div>
-          <label for="asset-path">Selected Path</label>
-          <input id="asset-path" type="text" value="${escapeHtml(initialAsset)}" spellcheck="false">
+      <div class="section-block">
+        <h2 class="section-heading">Authorisation</h2>
+        <div class="cookie-grid">
+          <div>
+            <label for="allowed-cookie">allowed Cookie</label>
+            <input id="allowed-cookie" type="text" value="" placeholder="e.g. true">
+          </div>
+          <div>
+            <label for="delay-cookie">delay Cookie</label>
+            <input id="delay-cookie" type="text" value="" placeholder="e.g. 250">
+          </div>
         </div>
-        <div class="hint">Host URL: <span id="host-url">${escapeHtml(initialHostUrl)}</span></div>
-        <div class="hint">Backend URL: <span id="backend-url">${escapeHtml(initialBackendUrl)}</span></div>
+        <div class="controls" style="margin-top: 12px;">
+          <div class="hint">Active cookies: <span id="cookie-status"></span></div>
+          <button id="apply-cookies-button" type="button">Apply Cookies</button>
+        </div>
       </div>
     </section>
 
@@ -257,12 +297,42 @@ export function dmViewerHandler(req) {
     const assetSelect = document.getElementById('asset-select');
     const assetPathInput = document.getElementById('asset-path');
     const loadButton = document.getElementById('load-button');
+    const applyCookiesButton = document.getElementById('apply-cookies-button');
     const assetFrame = document.getElementById('asset-frame');
     const hostUrl = document.getElementById('host-url');
     const backendUrl = document.getElementById('backend-url');
+    const allowedCookieInput = document.getElementById('allowed-cookie');
+    const delayCookieInput = document.getElementById('delay-cookie');
+    const cookieStatus = document.getElementById('cookie-status');
     const headersNode = document.getElementById('headers');
     const statusNode = document.getElementById('status');
     const backendOrigin = ${JSON.stringify(DM_BACKEND_ORIGIN)};
+
+    function getCookieValue(name) {
+      const cookies = document.cookie ? document.cookie.split('; ') : [];
+      const prefix = name + '=';
+      const match = cookies.find((cookie) => cookie.startsWith(prefix));
+      return match ? decodeURIComponent(match.slice(prefix.length)) : '';
+    }
+
+    function updateCookieStatus() {
+      cookieStatus.textContent = document.cookie || '(none)';
+    }
+
+    function writeCookie(name, value) {
+      if (value) {
+        document.cookie = name + '=' + encodeURIComponent(value) + '; path=/; SameSite=Lax';
+        return;
+      }
+
+      document.cookie = name + '=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+    }
+
+    function applyCookies() {
+      writeCookie('allowed', allowedCookieInput.value.trim());
+      writeCookie('delay', delayCookieInput.value.trim());
+      updateCookieStatus();
+    }
 
     function normalizePath(value) {
       if (!value) {
@@ -282,7 +352,9 @@ export function dmViewerHandler(req) {
       }
 
       hostUrl.textContent = window.location.origin + normalizedPath;
+      hostUrl.href = window.location.origin + normalizedPath;
       backendUrl.textContent = backendOrigin + normalizedPath;
+      backendUrl.href = backendOrigin + normalizedPath;
       return normalizedPath;
     }
 
@@ -291,25 +363,28 @@ export function dmViewerHandler(req) {
       if (!assetPath) {
         statusNode.textContent = 'No asset path selected.';
         headersNode.textContent = '';
-        assetFrame.removeAttribute('src');
+        assetFrame.src = 'about:blank';
         return;
       }
 
-      assetFrame.src = assetPath;
       statusNode.textContent = 'Fetching headers...';
       headersNode.textContent = '';
+      assetFrame.src = 'about:blank';
 
       try {
         const response = await fetch(assetPath, { method: 'HEAD' });
-        const headerLines = [];
+        const headerLines = ['HTTP ' + response.status + ' ' + response.statusText];
 
         response.headers.forEach((value, key) => {
           headerLines.push(key + ': ' + value);
         });
 
-        headerLines.sort((left, right) => left.localeCompare(right));
         statusNode.textContent = response.status + ' ' + response.statusText;
         headersNode.textContent = headerLines.join('\\n');
+
+        if (response.ok) {
+          assetFrame.src = assetPath;
+        }
       } catch (error) {
         statusNode.textContent = 'Header request failed';
         headersNode.textContent = String(error);
@@ -321,6 +396,11 @@ export function dmViewerHandler(req) {
       loadAsset();
     });
 
+    applyCookiesButton.addEventListener('click', () => {
+      applyCookies();
+      loadAsset();
+    });
+
     loadButton.addEventListener('click', loadAsset);
     assetPathInput.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
@@ -328,6 +408,9 @@ export function dmViewerHandler(req) {
       }
     });
 
+    allowedCookieInput.value = getCookieValue('allowed');
+    delayCookieInput.value = getCookieValue('delay');
+    updateCookieStatus();
     loadAsset();
   </script>
 </body>
