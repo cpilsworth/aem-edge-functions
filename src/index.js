@@ -14,7 +14,8 @@ governing permissions and limitations under the License.
 
 import * as response from './lib/response.js';
 import { log } from './lib/log.js';
-import { weatherHandler } from "./weather.js";
+import { dmProxyHandler } from "./dm.js";
+import { dmViewerHandler } from "./dm-viewer.js";
 
 addEventListener("fetch", (event) => event.respondWith(handleRequest(event)));
 
@@ -30,9 +31,11 @@ async function handleRequest(event) {
       finalResponse = new Response("Hello World from the edge!", { status: 200 });
     } else if (url.pathname === "/hello-world" && req.method === "GET") {
       finalResponse = new Response("Hello World from the edge!", { status: 200 });
-    } else if (url.pathname === "/weather" && req.method === "GET") {
-      finalResponse = await weatherHandler(req);
-    } else {
+    } else if (url.pathname === "/test" && req.method === "GET") {
+      finalResponse = dmViewerHandler(req);
+    } else if (url.pathname.startsWith("/adobe/assets")) {
+      finalResponse = await dmProxyHandler(req);
+    }else {
       finalResponse = response.notFound();
     }
   } catch (err) {
@@ -45,4 +48,3 @@ async function handleRequest(event) {
 
   return finalResponse;
 }
-
