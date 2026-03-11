@@ -6,6 +6,8 @@ data:
       origins:
       - name: dm
         domain: dm.cpilsworth.workers.dev
+      - name: auth
+        domain: auth.cpilsworth.workers.dev
     - name: second-compute
   # Uncomment to enable secrets
   # secrets:
