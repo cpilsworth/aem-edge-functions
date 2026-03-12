@@ -1,4 +1,4 @@
-# AEM Edge Functions DM Proxy Demo
+# AEM Edge Functions DM Proxy PoC
 
 This repository is a working AEM Edge Functions sample that proxies Dynamic Media requests through Fastly-based edge code and exposes a browser test harness for inspecting the results.
 
